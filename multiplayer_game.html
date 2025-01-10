@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hikaye Oluşturma Oyunu</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .game-container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            width: 80%;
+            max-width: 600px;
+            text-align: center;
+        }
+        .output {
+            margin-bottom: 20px;
+            min-height: 100px;
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+        #kategoriSecimi {
+           margin-bottom: 20px;
+        }
+        #kelimeInput {
+          width: calc(100% - 22px);
+            padding: 10px;
+            margin-top: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            color: black;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 10px;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+        .user-input {
+           margin-bottom: 10px;
+        }
+        .user-input button {
+             margin-left: 5px;
+           }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div id="kategoriSecimi">
+            <p>Oyunumuza hoş geldiniz! Hikayenizin başlama kategorisi:</p>
+            <p id="kategori"></p>
+        </div>
+        <div class="output" id="output">
+        </div>
+        <div class="user-input">
+            <input type="text" id="kelimeInput" placeholder="Hikayeye ekle..." style="display: none;">
+            <button id="submitBtn" style="display: none;">Gönder</button>
+            <button id="yenilgiBtn" style="display: none;">Yenildim</button>
+        </div>
+        <div id="lobby" style="display: flex; flex-direction: column; align-items: center;">
+           <p>Oyuncular:</p>
+           <ul id="playerList"></ul>
+            <p id="lobbyMessage"></p>
+            <button id="startButton" disabled style="margin-top: 10px; display: none;">Oyunu Başlat</button>
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <script>
+        const socket = io();
+
+        let oyuncuSirasi = 1;
+        let hikaye = "";
+        let kategoriDiv = document.getElementById("kategori");
+        let outputDiv = document.getElementById("output");
+        let kelimeInput = document.getElementById("kelimeInput");
+        let submitBtn = document.getElementById("submitBtn");
+        let yenilgiBtn = document.getElementById("yenilgiBtn");
+        let kategoriler = ["Hayvanlar", "Meyveler", "Meslekler", "Ülkeler", "Renkler", "Sporlar"];
+        let secilenKategori;
+
+        const lobbyDiv = document.getElementById('lobby');
+        const playerList = document.getElementById('playerList');
+        const lobbyMessage = document.getElementById('lobbyMessage');
+        const startButton = document.getElementById('startButton');
+        const gameContainer = document.querySelector('.game-container');
+
+        let players = [];
+        let gameStarted = false;
+
+        socket.on('updatePlayers', (updatedPlayers) => {
+              players = updatedPlayers;
+              updatePlayerList();
+        });
+        socket.on('lobbyFull', (message) => {
+          lobbyMessage.textContent = message;
+          startButton.style.display = 'none';
+        });
+
+        socket.on('gameStarted', (data) => {
+           console.log('Oyun başladı, gelen veri:', data);
+           secilenKategori = kategoriler[Math.floor(Math.random() * kategoriler.length)];
+           kategoriDiv.innerHTML = secilenKategori;
+          gameStarted = true;
+           lobbyDiv.style.display = 'none';
+           gameContainer.style.display = 'block';
+           kelimeInput.style.display = "block";
+           submitBtn.style.display = "block";
+            yenilgiBtn.style.display = "block";
+           outputDiv.innerHTML = "";
+          updateOutput(`Oyun başladı! Hikayenin ilk kelimesi ${secilenKategori} kategorisinden... ${socket.id === data.player1 ? "1. oyuncu" : "2. oyuncu"} başlıyor`);
+          oyuncuSirasi = socket.id === data.player1 ? 1 : 2;
+           oyunDongusu();
+        });
+         socket.on('sentenceReceived', (data) => {
+          if(socket.id !== data.playerId){
+                updateOutput(`${data.playerId} oyuncusu: ${data.sentence}`);
+          }
+       });
+        socket.on('error', (message) => {
+           alert(message);
+        });
+        socket.on('gameReset', () => {
+           gameStarted = false;
+           lobbyDiv.style.display = 'flex';
+           gameContainer.style.display = 'none';
+           outputDiv.innerHTML = "";
+           kelimeInput.style.display = "none";
+           submitBtn.style.display = "none";
+           yenilgiBtn.style.display = "none";
+           lobbyMessage.textContent = "";
+           alert("Oyun sıfırlandı. Yeni oyuncular bekleniyor.");
+        });
+        startButton.addEventListener('click', () => {
+              socket.emit('startGame');
+       });
+
+        function updatePlayerList() {
+            playerList.innerHTML = '';
+            players.forEach(id => {
+                const listItem = document.createElement('li');
+                listItem.textContent = `Oyuncu: ${id}`;
+                playerList.appendChild(listItem);
+            });
+              if (players.length === 2) {
+                   startButton.disabled = false;
+                     startButton.style.display = 'block';
+                 } else {
+                     startButton.disabled = true;
+                     startButton.style.display = 'none';
+                  }
+        }
+        function updateOutput(text) {
+           outputDiv.innerHTML += `<p>${text}</p>`;
+        }
+        function clearInput() {
+            kelimeInput.value = "";
+        }
+       async function oyunDongusu() {
+             while(gameStarted){
+               try{
+                    if (oyuncuSirasi === 1) {
+                        let result = await oyuncuHamlesi(1);
+                        if(result == "yenildi"){
+                              socket.emit('submitSentence', {sentence: "1. oyuncu yenildi"});
+                           alert("2. oyuncu kazandı!");
+                            break;
+                        }
+                       oyuncuSirasi = 2;
+                    }else if (oyuncuSirasi === 2){
+                        let result = await oyuncuHamlesi(2);
+                          if(result == "yenildi"){
+                             socket.emit('submitSentence', {sentence: "2. oyuncu yenildi"});
+                             alert("1. oyuncu kazandı!");
+                            break;
+                         }
+                        oyuncuSirasi = 1;
+                     }
+                  }
+               catch(error){
+                    console.error("Oyun döngüsünde hata oluştu:", error);
+                    await updateOutput("Oyunda beklenmedik bir hata oluştu. Lütfen sayfayı yenileyin.");
+                   break;
+                 }
+            }
+       }
+        function oyuncuHamlesi(oyuncuNo) {
+            return new Promise(resolve => {
+               submitBtn.onclick = async () => {
+                    let girilenCümle = kelimeInput.value.trim();
+                   if(girilenCümle == ""){
+                         alert("Lütfen bir cümle yaz!");
+                         return;
+                    }
+                    let kelimeSayisi = girilenCümle.split(" ").length;
+                    if(kelimeSayisi < 3 || kelimeSayisi > 5) {
+                         alert("Lütfen 3 ile 5 kelime arasında bir cümle yaz!");
+                         clearInput();
+                          return;
+                    }
+                     hikaye += girilenCümle + " ";
+                   socket.emit('submitSentence', {sentence: girilenCümle});
+                   clearInput();
+                   resolve();
+                };
+              yenilgiBtn.onclick = async () => {
+                     socket.emit('submitSentence', {sentence: `Oyuncu ${oyuncuNo} yenildi`});
+                    resolve("yenildi");
+              };
+            });
+        }
+    </script>
+</body>
+</html>
